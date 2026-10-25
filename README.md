@@ -1,78 +1,95 @@
 # WF Bootstrapper U44.1.1
 
-This repository swaps Warframe's `dwmapi.dll` with a diagnostic build to trace the U44 OpenWF bootstrap path and log the relevant call flow without changing normal game behavior beyond the diagnostic instrumentation.
+A small Windows utility for temporarily installing a diagnostic `dwmapi.dll` in a Warframe installation.
 
-The diagnostic payload is intentionally built to behave like the known-good v17 baseline while logging calls to OpenWF's message builder. The generated log is written to:
+The installer backs up an existing game-folder DLL before replacing it. The scripts and native installer verify copied files with SHA-256 hashes. Diagnostic logs are written by the payload to:
 
-`OpenWF\spaceninja-u44-v18.log`
+```text
+OpenWF\spaceninja-u44-v18.log
+```
 
-## What this does
+## Contents
 
-The instrumented `payload\dwmapi.dll` logs every call to OpenWF's message builder at RVA `0x7F330`, including the caller address. Example output:
+- `payload\dwmapi.dll` — diagnostic build
+- `payload-v17\dwmapi.dll` — known-good v17 restore build
+- `install-v18d.ps1` — PowerShell diagnostic-build installer
+- `restore-v18d.ps1` — PowerShell restore script
+- `installer.exe` — native Windows installer
+- `installer.cpp` — source for the native installer
 
-`[18] msg-builder 0x7F330 called, ret=OpenWF+0x...`
+## Before you start
 
-This was used to verify the real call site for the "optional pattern scan" path. A first round of instrumentation at `0x28B80` produced no log output, which confirmed that address was not the active message-builder site.
-
-## Repository layout
-
-- `payload/` — diagnostic v18 build used for tracing (`dwmapi.dll`)
-- `payload-v17/` — known-good v17 restore payload
-- `install-v18d.ps1` — PowerShell installer for the diagnostic build
-- `restore-v18d.ps1` — PowerShell restore script for the v17 DLL
-- `installer.cpp` — native Windows installer that auto-detects the Warframe folder, backs up the original DLL, verifies SHA256 hashes, and supports CLI usage
-- `installer.exe` — compiled native installer binary
-
-## Prerequisites
-
+- Windows is required.
 - Close Warframe before installing or restoring the DLL.
-- The game folder must contain `Warframe.x64.exe`.
-- Run the scripts from a PowerShell session with execution policy bypass enabled if needed.
+- Make sure the selected game folder contains `Warframe.x64.exe`.
+- The PowerShell scripts default to `E:\SteamLibrary\steamapps\common\Warframe`. If your game is installed elsewhere, pass its folder with `-WarframePath`.
 
-## Install diagnostic build
+## Install the diagnostic build
 
-From the repo root:
+From the repository folder, run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\install-v18d.ps1"
 ```
 
-This will:
+For a different game-folder location:
 
-- detect the Warframe install folder
-- stop if Warframe is running
-- back up the existing `dwmapi.dll` to `OpenWF\u44-v18d-backup`
-- copy in the diagnostic payload
-- verify the file hash matches the payload
-- tell you where the log will appear
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\install-v18d.ps1" -WarframePath "C:\Games\Warframe"
+```
 
-## Restore the known-good v17 DLL
+The script checks that the game is closed and the game executable is present, backs up any existing `dwmapi.dll` to `OpenWF\u44-v18d-backup`, installs the diagnostic build, and verifies the copied file.
+
+## Restore the v17 build
+
+Run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\restore-v18d.ps1"
 ```
 
-This restores the v17 DLL and verifies the hash before completing.
-
-## Native installer usage
-
-The project also includes a C++ installer with a small interactive menu and CLI flags:
+If Warframe is installed in a different folder, specify it:
 
 ```powershell
-installer.exe --install --path "C:\Games\Warframe"
-installer.exe --restore --path "C:\Games\Warframe"
+powershell -ExecutionPolicy Bypass -File ".\restore-v18d.ps1" -WarframePath "C:\Games\Warframe"
 ```
 
-Optional CLI switches:
+The restore script checks that Warframe is closed, copies the included v17 DLL into the game folder, and verifies the copy.
 
-- `--install` — install the diagnostic payload
-- `--restore` — restore the known-good v17 payload
-- `--path <dir>` — explicitly select the Warframe install folder
-- `--payload <dll>` — install a custom replacement DLL instead of `payload\dwmapi.dll`
-- `--yes` — non-interactive, no prompts
+## Native installer
 
-## Notes
+Run `installer.exe` to open the interactive menu. The native installer can also be used from PowerShell:
 
-- This is diagnostic-only tooling for investigation.
-- It intentionally targets the `dwmapi.dll` replacement path used by the game.
-- The backup files are stored under `OpenWF\u44-v18d-backup` so they can be restored later if needed.
+```powershell
+.\installer.exe --install --path "C:\Games\Warframe"
+.\installer.exe --restore --path "C:\Games\Warframe"
+```
+
+Available options:
+
+| Option | Description |
+| --- | --- |
+| `--install` | Install the diagnostic build. |
+| `--restore` | Restore the included v17 build. |
+| `--path <dir>` | Specify the Warframe folder. If omitted, the installer tries to detect it through Steam, then checks its configured default folder. |
+| `--payload <dll>` | Use a custom DLL for installation instead of `payload\dwmapi.dll`. |
+| `--yes` | Run without the interactive menu or prompts. |
+| `--help` | Show command-line usage. |
+
+Example non-interactive install:
+
+```powershell
+.\installer.exe --install --path "C:\Games\Warframe" --yes
+```
+
+## Troubleshooting
+
+- **Warframe is running:** Close the game, then retry. The game may lock the DLL while running.
+- **Game folder not found:** Confirm the folder contains `Warframe.x64.exe`; use `-WarframePath` with a script or `--path` with the native installer.
+- **PowerShell blocks the script:** Run it with `-ExecutionPolicy Bypass` as shown above.
+- **Need to return to the previous DLL:** Use the restore script or the native installer's restore option. The original DLL backup created by installation is stored in `OpenWF\u44-v18d-backup`.
+- **Looking for diagnostics:** Check `OpenWF\spaceninja-u44-v18.log` in the Warframe folder after launching the game.
+
+## Contributors
+
+- Mosiu
